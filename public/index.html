@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice Scheduler</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2.5rem 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 300;
+      letter-spacing: 0.2em;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 2.5rem;
+    }
+
+    /* ── Orb button ── */
+    #btn-toggle {
+      position: relative;
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      border: 2px solid #333;
+      background: radial-gradient(circle at 40% 35%, #1e1e1e, #0a0a0a);
+      color: #ccc;
+      font-size: 0.95rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: border-color 0.25s, box-shadow 0.25s, color 0.25s;
+      outline: none;
+      margin-bottom: 1.25rem;
+    }
+
+    #btn-toggle:hover:not(:disabled) {
+      border-color: #555;
+      box-shadow: 0 0 28px rgba(255,255,255,0.04);
+    }
+
+    #btn-toggle.active {
+      border-color: #ef4444;
+      box-shadow: 0 0 32px rgba(239,68,68,0.25);
+      color: #ef4444;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    #btn-toggle.speaking {
+      border-color: #3b82f6;
+      box-shadow: 0 0 32px rgba(59,130,246,0.3);
+      color: #93c5fd;
+      animation: none;
+    }
+
+    #btn-toggle:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(239,68,68,0.2); }
+      50%       { box-shadow: 0 0 40px rgba(239,68,68,0.4); }
+    }
+
+    /* ── Status label ── */
+    #status {
+      font-size: 0.75rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #444;
+      margin-bottom: 2rem;
+      min-height: 1rem;
+      transition: color 0.2s;
+    }
+    #status.connecting { color: #f59e0b; }
+    #status.listening  { color: #10b981; }
+    #status.speaking   { color: #3b82f6; }
+    #status.error      { color: #ef4444; }
+
+    /* ── Calendar success banner ── */
+    #calendar-banner {
+      display: none;
+      width: 100%;
+      max-width: 600px;
+      background: #0b1f12;
+      border: 1px solid #166534;
+      border-radius: 10px;
+      padding: 0.85rem 1.2rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.875rem;
+      color: #4ade80;
+      line-height: 1.4;
+    }
+    #calendar-banner a {
+      color: #4ade80;
+      text-underline-offset: 3px;
+    }
+
+    /* ── Transcript ── */
+    #transcript {
+      width: 100%;
+      max-width: 600px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+    }
+
+    .turn {
+      padding: 0.8rem 1rem;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      max-width: 82%;
+    }
+
+    .turn.user {
+      background: #111d2e;
+      border: 1px solid #1e3a5f;
+      align-self: flex-end;
+      color: #93c5fd;
+    }
+
+    .turn.assistant {
+      background: #15112a;
+      border: 1px solid #2d1f5e;
+      align-self: flex-start;
+      color: #c4b5fd;
+    }
+
+    .turn.error-turn {
+      background: #1f0a0a;
+      border: 1px solid #7f1d1d;
+      align-self: flex-start;
+      color: #fca5a5;
+    }
+
+    .turn-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      opacity: 0.45;
+      margin-bottom: 0.3rem;
+    }
+
+    /* ── Instructions hint ── */
+    #hint {
+      font-size: 0.78rem;
+      color: #333;
+      text-align: center;
+      max-width: 380px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <h1>Voice Scheduler</h1>
+
+  <button id="btn-toggle">Start</button>
+
+  <div id="status">idle</div>
+
+  <div id="calendar-banner"></div>
+
+  <div id="transcript"></div>
+
+  <p id="hint">Click Start, allow microphone access, then speak naturally to schedule a meeting.</p>
+
+  <script src="app.js"></script>
+</body>
+</html>
