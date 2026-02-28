@@ -313,16 +313,16 @@ function appendTurn(role, text) {
   div.className = `turn ${role}`;
   div.innerHTML =
     `<div class="turn-label">${role === 'user' ? 'You' : 'Assistant'}</div>` +
-    `<div class="turn-text">${escapeHtml(text)}</div>`;
+    `<div class="turn-bubble">${escapeHtml(text)}</div>`;
   transcriptEl.appendChild(div);
   div.scrollIntoView({ behavior: 'smooth', block: 'end' });
   return div;
 }
 
 function updateTurnText(turnEl, text) {
-  const el = turnEl.querySelector('.turn-text');
+  const el = turnEl.querySelector('.turn-bubble');
   if (el) {
-    el.textContent = text;
+    el.textContent = stripMarkdown(text);
     turnEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }
 }
@@ -332,7 +332,7 @@ function appendError(message) {
   div.className = 'turn error-turn';
   div.innerHTML =
     `<div class="turn-label">Error</div>` +
-    `<div class="turn-text">${escapeHtml(message)}</div>`;
+    `<div class="turn-bubble">${escapeHtml(message)}</div>`;
   transcriptEl.appendChild(div);
   div.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
@@ -347,9 +347,19 @@ function showCalendarBanner(eventLink, args) {
   calendarBanner.style.display = 'block';
 }
 
-function escapeHtml(str) {
+function stripMarkdown(str) {
   if (!str) return '';
   return str
+    .replace(/\*\*(.+?)\*\*/g, '$1')  // **bold**
+    .replace(/\*(.+?)\*/g, '$1')       // *italic*
+    .replace(/`(.+?)`/g, '$1')         // `code`
+    .replace(/#+\s/g, '')              // # headings
+    .replace(/^[-*]\s/gm, '');         // - bullet points
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return stripMarkdown(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

@@ -120,14 +120,8 @@ wss.on('connection', (browserWs, req) => {
               data: part.inlineData.data,
             }));
           }
-          if (part.text) {
-            // Text part alongside audio (if model produces it)
-            safeSend(browserWs, JSON.stringify({
-              type: 'transcript',
-              role: 'assistant',
-              text: part.text,
-            }));
-          }
+          // part.text is intentionally ignored — it contains the model's
+          // internal reasoning/thinking, not the spoken response transcript
         }
       }
 
@@ -319,6 +313,7 @@ RULES:
 - Convert relative dates like "tomorrow" or "next Friday" to specific dates using today's date
 - Always repeat the date/time back to the user in plain language before confirming
 - Keep responses short — this is a voice interface
+- Never use markdown, bullet points, asterisks, or any special formatting — plain text only
 - If the user says "yes", "correct", "go ahead" or similar, proceed with booking
 - If calendar creation fails, apologise briefly and ask if they'd like to try again`;
 }
