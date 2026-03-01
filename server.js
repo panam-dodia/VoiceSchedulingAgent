@@ -31,17 +31,30 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server, path: '/ws' });
 
 wss.on('connection', (browserWs, req) => {
-  console.log(`[${new Date().toISOString()}] Browser connected from ${req.socket.remoteAddress}`);
+  const reqUrl = new URL(req.url, `http://localhost`);
+  const timezone = reqUrl.searchParams.get('timezone') || 'UTC';
+  console.log(`[${new Date().toISOString()}] Browser connected — timezone: ${timezone}`);
+
+  let reconnectAttempts = 0;
+  const MAX_RECONNECTS = 3;
+  let geminiWs = null;
+
+  function connectToGemini() {
+    geminiWs = new WebSocket(GEMINI_WS_URL);
+    attachGeminiHandlers();
+  }
 
   // ── Connect to Gemini Live API ─────────────────────────────────────────────
-  const geminiWs = new WebSocket(GEMINI_WS_URL);
+  connectToGemini();
+
+  function attachGeminiHandlers() {
 
   geminiWs.on('open', () => {
     console.log('[Gemini] WebSocket connected — sending setup');
 
     const todayStr = new Date().toLocaleDateString('en-US', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-      timeZone: 'UTC',
+      timeZone: timezone,
     });
 
     sendToGemini({
@@ -56,7 +69,7 @@ wss.on('connection', (browserWs, req) => {
           },
         },
         systemInstruction: {
-          parts: [{ text: buildSystemPrompt(todayStr) }],
+          parts: [{ text: buildSystemPrompt(todayStr, timezone) }],
         },
         tools: [{ functionDeclarations: [calendarFunctionDeclaration()] }],
       },
@@ -165,11 +178,24 @@ wss.on('connection', (browserWs, req) => {
 
   geminiWs.on('close', (code, reason) => {
     console.log(`[Gemini] WebSocket closed: ${code} ${reason}`);
+
+    // 1011 = internal server error on Gemini's side — retry automatically
+    if (code === 1011 && reconnectAttempts < MAX_RECONNECTS && browserWs.readyState === WebSocket.OPEN) {
+      reconnectAttempts++;
+      const delay = reconnectAttempts * 1500;
+      console.log(`[Gemini] Retrying in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECTS})`);
+      safeSend(browserWs, JSON.stringify({ type: 'reconnecting', attempt: reconnectAttempts }));
+      setTimeout(connectToGemini, delay);
+      return;
+    }
+
     if (browserWs.readyState === WebSocket.OPEN) {
-      safeSend(browserWs, JSON.stringify({ type: 'error', message: 'Gemini connection closed' }));
+      safeSend(browserWs, JSON.stringify({ type: 'error', message: 'Connection lost. Please click Stop and try again.' }));
       browserWs.close();
     }
   });
+
+  } // end attachGeminiHandlers
 
   // ── Browser → Gemini ───────────────────────────────────────────────────────
   browserWs.on('message', (rawData) => {
@@ -219,6 +245,7 @@ wss.on('connection', (browserWs, req) => {
         dateTime: args.date_time,
         title: args.title,
         durationMinutes: args.duration_minutes,
+        timezone,
       });
 
       console.log('[Calendar] Event created:', result.eventLink);
@@ -293,8 +320,8 @@ function calendarFunctionDeclaration() {
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(todayStr) {
-  return `You are a friendly, professional scheduling assistant. Today is ${todayStr} (UTC).
+function buildSystemPrompt(todayStr, timezone) {
+  return `You are a friendly, professional scheduling assistant. Today is ${todayStr}. The user's timezone is ${timezone}.
 
 Your goal is to schedule a meeting by collecting:
 1. The user's full name

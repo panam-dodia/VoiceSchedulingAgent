@@ -4,7 +4,8 @@
 
 const WS_URL = (() => {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${location.host}/ws`;
+  const tz = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  return `${proto}//${location.host}/ws?timezone=${tz}`;
 })();
 
 // Gemini Live API requires PCM16 at 16 kHz for INPUT
@@ -22,13 +23,12 @@ let playbackContext = null;  // AudioContext at 24 kHz — assistant audio playb
 let mediaStream = null;
 let scriptProcessor = null;
 let sourceNode = null;
+let silentGain = null;
 let isRecording = false;
 
-// Playback queue — sequential chunks
-let playbackQueue = [];
-let isPlaying = false;
-let currentPlaybackSource = null;
-let playbackStartTime = 0;
+// Playback scheduling — chunks are pre-scheduled on the AudioContext timeline
+let nextPlayTime = 0;          // when the next chunk should start (AudioContext time)
+let activePlaybackSources = []; // track active sources so we can stop them on interrupt
 
 // Transcript — track current streaming turn
 let assistantTranscriptEl = null;
@@ -61,7 +61,14 @@ async function startSession() {
 
   // Request microphone access before connecting
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    });
   } catch (err) {
     setStatus('error');
     appendError(`Microphone access denied: ${err.message}`);
@@ -96,13 +103,13 @@ function stopSession() {
 
   // Stop mic capture
   if (scriptProcessor) { scriptProcessor.disconnect(); scriptProcessor = null; }
-  if (sourceNode)       { sourceNode.disconnect();       sourceNode = null;       }
+  if (silentGain)      { silentGain.disconnect();      silentGain = null;      }
+  if (sourceNode)      { sourceNode.disconnect();      sourceNode = null;      }
   if (mediaStream)      { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
   if (captureContext)   { captureContext.close(); captureContext = null; }
 
   // Stop playback
   stopPlayback();
-  playbackQueue = [];
   if (playbackContext) { playbackContext.close(); playbackContext = null; }
 
   // Close WebSocket
@@ -172,6 +179,13 @@ function handleServerMessage(msg) {
     // Calendar event was successfully created
     case 'calendar.event.created':
       showCalendarBanner(msg.eventLink, msg.args);
+      // Auto-stop after Gemini finishes speaking the confirmation (~4 seconds)
+      setTimeout(() => { if (isRecording) stopSession(); }, 4000);
+      break;
+
+    case 'reconnecting':
+      setStatus('connecting');
+      console.log(`[Reconnect] Attempt ${msg.attempt}`);
       break;
 
     case 'error':
@@ -223,9 +237,13 @@ function startAudioCapture() {
     ws.send(JSON.stringify({ type: 'audio', data: base64 }));
   };
 
-  // Must be connected to destination or onaudioprocess won't fire
+  // Route through a silent gain node (gain=0) so onaudioprocess fires
+  // but mic audio is NOT played back through the speakers
+  silentGain = captureContext.createGain();
+  silentGain.gain.value = 0;
   sourceNode.connect(scriptProcessor);
-  scriptProcessor.connect(captureContext.destination);
+  scriptProcessor.connect(silentGain);
+  silentGain.connect(captureContext.destination);
 }
 
 /**
@@ -255,7 +273,8 @@ function startPlaybackContext() {
 }
 
 /**
- * Decode a base64 PCM16 chunk (24 kHz from Gemini) and queue it for playback.
+ * Decode a base64 PCM16 chunk (24 kHz from Gemini) and schedule it for
+ * gapless playback using AudioContext timeline scheduling.
  */
 function enqueueAudio(base64String) {
   if (!playbackContext) return;
@@ -268,37 +287,34 @@ function enqueueAudio(base64String) {
   const float32 = new Float32Array(int16.length);
   for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768.0;
 
-  // Create a buffer at the native Gemini output rate (24 kHz)
   const audioBuffer = playbackContext.createBuffer(1, float32.length, PLAYBACK_SAMPLE_RATE);
   audioBuffer.copyToChannel(float32, 0);
 
-  playbackQueue.push(audioBuffer);
-  if (!isPlaying) playNextChunk();
-}
+  // Schedule this chunk to start exactly when the previous one ends.
+  // If we're behind (first chunk or after a gap), start immediately.
+  const startTime = Math.max(nextPlayTime, playbackContext.currentTime + 0.02);
+  nextPlayTime = startTime + audioBuffer.duration;
 
-function playNextChunk() {
-  if (playbackQueue.length === 0) {
-    isPlaying = false;
-    currentPlaybackSource = null;
-    return;
-  }
-
-  isPlaying = true;
-  const buf = playbackQueue.shift();
   const src = playbackContext.createBufferSource();
-  src.buffer = buf;
+  src.buffer = audioBuffer;
   src.connect(playbackContext.destination);
-  src.onended = playNextChunk;
-  currentPlaybackSource = src;
-  src.start();
+  src.start(startTime);
+
+  activePlaybackSources.push(src);
+
+  // Clean up the reference once it finishes
+  src.onended = () => {
+    activePlaybackSources = activePlaybackSources.filter(s => s !== src);
+  };
 }
 
 function stopPlayback() {
-  if (currentPlaybackSource) {
-    try { currentPlaybackSource.stop(); } catch { /* already stopped */ }
-    currentPlaybackSource = null;
-  }
-  isPlaying = false;
+  // Stop all scheduled sources and reset the timeline
+  activePlaybackSources.forEach(src => {
+    try { src.stop(); } catch { /* already stopped */ }
+  });
+  activePlaybackSources = [];
+  nextPlayTime = 0;
 }
 
 // ─── UI Helpers ───────────────────────────────────────────────────────────────

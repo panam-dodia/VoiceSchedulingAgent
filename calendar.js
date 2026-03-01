@@ -39,7 +39,7 @@ function getCalendarClient() {
  * @param {number} [params.durationMinutes=30] - Event duration in minutes
  * @returns {Promise<{success: boolean, eventLink: string, eventId: string}>}
  */
-async function createEvent({ name, dateTime, title, durationMinutes = 30 }) {
+async function createEvent({ name, dateTime, title, durationMinutes = 30, timezone = 'UTC' }) {
   if (!name || !dateTime) {
     throw new Error('name and dateTime are required parameters');
   }
@@ -60,11 +60,11 @@ async function createEvent({ name, dateTime, title, durationMinutes = 30 }) {
     description: `Scheduled by voice assistant for ${name}`,
     start: {
       dateTime: startTime.toISOString(),
-      timeZone: 'UTC',
+      timeZone: timezone,
     },
     end: {
       dateTime: endTime.toISOString(),
-      timeZone: 'UTC',
+      timeZone: timezone,
     },
   };
 
