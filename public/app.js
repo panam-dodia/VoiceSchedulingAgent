@@ -1,5 +1,35 @@
 'use strict';
 
+// ─── Auth gate ────────────────────────────────────────────────────────────────
+
+const loginSection = document.getElementById('login-section');
+const appSection   = document.getElementById('app-section');
+const userBar      = document.getElementById('user-bar');
+const userNameEl   = document.getElementById('user-name');
+const userAvatarEl = document.getElementById('user-avatar');
+const loginError   = document.getElementById('login-error');
+
+async function checkAuth() {
+  if (new URLSearchParams(location.search).get('auth') === 'error') {
+    loginError.style.display = 'block';
+  }
+  const res  = await fetch('/auth/status');
+  const data = await res.json();
+  if (data.authenticated) {
+    loginSection.style.display = 'none';
+    appSection.style.display   = 'flex';
+    userBar.style.display      = 'flex';
+    if (data.user?.name)    userNameEl.textContent = data.user.name;
+    if (data.user?.picture) userAvatarEl.src       = data.user.picture;
+  } else {
+    loginSection.style.display = 'flex';
+    appSection.style.display   = 'none';
+    userBar.style.display      = 'none';
+  }
+}
+
+checkAuth();
+
 // ─── Configuration ────────────────────────────────────────────────────────────
 
 const WS_URL = (() => {
@@ -94,6 +124,11 @@ async function startSession() {
 
   ws.onclose = (ev) => {
     console.log('[WS] Closed:', ev.code, ev.reason);
+    if (ev.code === 4001) {
+      // Session expired — redirect to sign-in
+      window.location.href = '/auth/login';
+      return;
+    }
     if (isRecording) { stopSession(); setStatus('error'); }
   };
 }
