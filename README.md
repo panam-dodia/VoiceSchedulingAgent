@@ -37,15 +37,48 @@ Users sign in with Google and grant calendar.events permission. The app receives
 
 ## Running Locally
 
+### Prerequisites
+- Node.js 18+
+- Chrome or Edge (required for Web Audio API)
+- A Gemini API key — free at https://aistudio.google.com/apikey
+- A Google Cloud project with OAuth 2.0 credentials (steps below)
+
+### 1. Clone and install
+
 ```bash
 git clone https://github.com/panam-dodia/VoiceSchedulingAgent.git
 cd VoiceSchedulingAgent
 npm install
-cp .env.example .env
-# Fill in GEMINI_API_KEY, GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, SESSION_SECRET
+```
+
+### 2. Set up Google OAuth credentials
+
+1. Go to https://console.cloud.google.com and create a project
+2. Enable the Google Calendar API for the project
+3. Go to APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID
+4. Application type: Web application
+5. Add `http://localhost:3000` under Authorized JavaScript origins
+6. Add `http://localhost:3000/auth/callback` under Authorized redirect URIs
+7. Save and copy the Client ID and Client Secret
+8. Go to Google Auth Platform → Audience → set user type to External → Publish App
+
+### 3. Configure environment
+
+Copy `.env.example` to `.env` and fill in:
+
+```
+GEMINI_API_KEY=          # from aistudio.google.com
+GOOGLE_OAUTH_CLIENT_ID=  # from step 2
+GOOGLE_OAUTH_CLIENT_SECRET= # from step 2
+SESSION_SECRET=          # any long random string
+PORT=3000
+```
+
+### 4. Run
+
+```bash
 npm start
 ```
 
 Open http://localhost:3000 in Chrome or Edge.
 
-See .env.example for all required environment variables and setup instructions.
